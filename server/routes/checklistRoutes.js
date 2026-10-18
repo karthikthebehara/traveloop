@@ -4,6 +4,7 @@ const {
   addChecklistItem,
   getChecklist,
   toggleItem,
+  resetChecklist,
   deleteChecklistItem,
 } = require('../controllers/checklistController');
 
@@ -12,14 +13,17 @@ const router = express.Router({ mergeParams: true });
 // All checklist routes require a valid JWT
 router.use(protect);
 
-// POST   /api/trips/:tripId/checklist             — add item
-// GET    /api/trips/:tripId/checklist             — list all items (grouped + summary)
+// POST   /api/trips/:tripId/checklist        — add item
+// GET    /api/trips/:tripId/checklist        — list all items
 router.route('/')
   .post(addChecklistItem)
   .get(getChecklist);
 
-// PATCH  /api/trips/:tripId/checklist/:itemId     — toggle is_packed
-// DELETE /api/trips/:tripId/checklist/:itemId     — remove item
+// PATCH  /api/trips/:tripId/checklist/reset  — reset all items to unpacked (Declared before :itemId)
+router.patch('/reset', resetChecklist);
+
+// PATCH  /api/trips/:tripId/checklist/:itemId — toggle single item
+// DELETE /api/trips/:tripId/checklist/:itemId — remove item
 router.route('/:itemId')
   .patch(toggleItem)
   .delete(deleteChecklistItem);

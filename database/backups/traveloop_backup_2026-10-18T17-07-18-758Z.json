@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-10-18T17:07:19.335Z",
+  "database": "odoo_hackathon",
+  "tables": {
+    "activities": [],
+    "activities_catalog": [],
+    "cities": [],
+    "packing_checklist": [],
+    "saved_destinations": [],
+    "stops": [],
+    "trip_collaborators": [],
+    "trip_expenses": [],
+    "trip_notes": [],
+    "trips": [],
+    "users": [
+      {
+        "id": 4,
+        "name": "Traveloop Administrator",
+        "first_name": "Admin",
+        "last_name": "Traveloop",
+        "email": "admin@traveloop.com",
+        "phone": null,
+        "city": null,
+        "country": null,
+        "bio": null,
+        "password_hash": "$2a$12$dm/NyWJFVxONWbBCKwnwo./WC16u4aYdeg7ekAm195UJw0Mne0cLu",
+        "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=250",
+        "language_preference": "en",
+        "created_at": "2026-10-17T22:16:45.000Z",
+        "updated_at": "2026-10-18T22:24:39.000Z",
+        "role": "admin"
+      }
+    ]
+  },
+  "summary": {
+    "activities": 0,
+    "activities_catalog": 0,
+    "cities": 0,
+    "packing_checklist": 0,
+    "saved_destinations": 0,
+    "stops": 0,
+    "trip_collaborators": 0,
+    "trip_expenses": 0,
+    "trip_notes": 0,
+    "trips": 0,
+    "users": 1
+  }
+}

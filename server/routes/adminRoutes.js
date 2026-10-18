@@ -1,14 +1,27 @@
 const express = require('express');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
-const { getStats } = require('../controllers/adminController');
+const {
+  getStats,
+  updateUserRole,
+  deleteUser,
+  createCity,
+  createCatalogActivity,
+} = require('../controllers/adminController');
 
 const router = express.Router();
 
-// Require both authentication and admin authorization
-router.use(protect);
-router.use(adminOnly);
+// All admin routes require valid JWT + admin role
+router.use(protect, adminOnly);
 
-// GET /api/admin/stats — platform-wide analytics
+// GET /api/admin/stats
 router.get('/stats', getStats);
+
+// User management
+router.patch('/users/:id/role', updateUserRole);
+router.delete('/users/:id',      deleteUser);
+
+// Catalog management
+router.post('/cities',     createCity);
+router.post('/activities', createCatalogActivity);
 
 module.exports = router;

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /cities
+Allow: /activities
+Allow: /community
+Allow: /privacy
+Allow: /terms
+Allow: /public/
+Disallow: /admin
+Disallow: /api/
+Disallow: /reset-password
+
+Sitemap: https://traveloop.com/sitemap.xml

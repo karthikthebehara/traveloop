@@ -1,97 +1,136 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Map, CheckSquare, DollarSign, ArrowRight, Plane } from 'lucide-react';
+import { Globe, Map, CheckSquare, DollarSign, ArrowRight, Compass, ShieldCheck } from 'lucide-react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 const features = [
-  { icon: Map,          title: 'Multi-City Itinerary', desc: 'Plan stops across cities with drag-and-drop reordering.' },
-  { icon: DollarSign,   title: 'Budget Tracker',       desc: 'Track spend per category and get real-time remaining budget.' },
-  { icon: CheckSquare,  title: 'Packing Checklist',    desc: 'Never forget a thing — organised checklists per trip.' },
-  { icon: Globe,        title: 'Public Sharing',       desc: 'Share your itinerary with friends via a public link.' },
+  {
+    icon: Map,
+    title: 'Multi-City Route Planning',
+    desc: 'Sequence destinations chronologically with arrival and departure dates and transit notes.',
+  },
+  {
+    icon: DollarSign,
+    title: 'Expense & Budget Tracker',
+    desc: 'Record categorized expenditures against target budgets with real-time variance calculations.',
+  },
+  {
+    icon: CheckSquare,
+    title: 'Structured Packing Lists',
+    desc: 'Organize trip gear by category with completion counters to ensure departure readiness.',
+  },
+  {
+    icon: Globe,
+    title: 'Public Link Sharing',
+    desc: 'Publish read-only trip itineraries with interactive maps and complete daily schedules.',
+  },
 ];
 
 export default function LandingPage() {
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const [dbOk, setDbOk] = useState(null);
+
+  // Redirect logged in users according to role
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (user?.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, navigate]);
 
   // Prove the API connection is live
   useEffect(() => {
-    api.get('/../../')          // hits GET / on the Express server
+    api
+      .get('/../../')
       .then((r) => setDbOk(r.data?.db_test === 2))
       .catch(() => setDbOk(false));
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--color-bg)' }}>
-
-      {/* ── Navbar ── */}
-      <nav className="flex items-center justify-between px-8 py-5 border-b border-slate-800">
-        <div className="flex items-center gap-2 text-xl font-bold">
-          <Plane className="text-indigo-400" size={22} />
-          <span className="gradient-text">Traveloop</span>
+    <div className="min-h-screen flex flex-col bg-[#0b0f17] text-slate-100">
+      {/* ── Top Bar ── */}
+      <nav className="flex items-center justify-between px-8 py-4 border-b border-slate-800/80 bg-[#0e1422]">
+        <div className="flex items-center gap-2.5 text-lg font-bold tracking-tight text-white">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+            <Compass size={18} />
+          </div>
+          <span>Traveloop</span>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/login')}
-            className="px-5 py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-indigo-500 hover:text-white transition-all text-sm font-medium"
+            className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white transition-colors text-xs font-semibold"
           >
             Sign In
           </button>
           <button
             onClick={() => navigate('/signup')}
-            className="btn-primary text-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition-colors"
           >
-            Get Started <ArrowRight size={15} />
+            Create Account <ArrowRight size={14} />
           </button>
         </div>
       </nav>
 
       {/* ── Hero ── */}
-      <section className="flex-1 flex flex-col items-center justify-center text-center px-6 py-24 relative overflow-hidden">
-        {/* Glow blob */}
-        <div
-          className="absolute w-96 h-96 rounded-full opacity-20 blur-3xl pointer-events-none"
-          style={{ background: 'radial-gradient(circle, #6366f1, #06b6d4)', top: '10%', left: '50%', transform: 'translateX(-50%)' }}
-        />
+      <section className="flex-1 flex flex-col items-center justify-center text-center px-6 py-20 max-w-4xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-blue-400 text-xs font-medium mb-6">
+          <ShieldCheck size={14} />
+          <span>Production Travel Coordination Platform</span>
+        </div>
 
-        <h1 className="text-5xl md:text-7xl font-extrabold leading-tight mb-6">
-          Plan Trips That
-          <br />
-          <span className="gradient-text">Feel Like Magic</span>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-white leading-tight mb-6">
+          Multi-City Itinerary Builder & Trip Expense Tracker
         </h1>
 
-        <p className="text-slate-400 text-lg md:text-xl max-w-2xl mb-10">
-          Traveloop is your all-in-one travel planner — build multi-city itineraries,
-          track budgets, pack smarter, and share adventures with the world.
+        <p className="text-slate-400 text-base sm:text-lg max-w-2xl mb-8 leading-relaxed">
+          Coordinate multi-stop travel routes, schedule verified sightseeing activities, balance budgets with live
+          expense tracking, and generate packing checklists.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-12">
-          <button onClick={() => navigate('/signup')} className="btn-primary text-base px-8 py-3">
-            Start Planning Free <ArrowRight size={16} />
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => navigate('/signup')}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-sm transition-colors"
+          >
+            Start Planning Trip <ArrowRight size={16} />
+          </button>
+          <button
+            onClick={() => navigate('/community')}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[#1f2937] hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 transition-colors"
+          >
+            Explore Public Itineraries
           </button>
         </div>
-
       </section>
 
-      {/* ── Features ── */}
-      <section className="px-6 pb-24">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {features.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="glass p-6 hover:border-indigo-500/40 transition-all group">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                style={{ background: 'rgba(99,102,241,0.15)' }}>
-                <Icon size={20} className="text-indigo-400 group-hover:text-cyan-400 transition-colors" />
+      {/* ── Features Grid ── */}
+      <section className="px-6 pb-20 max-w-6xl mx-auto w-full">
+        <div className="border-t border-slate-800 pt-12">
+          <h2 className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-6 text-center">
+            Core Planning Modules
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {features.map(({ icon: Icon, title, desc }) => (
+              <div
+                key={title}
+                className="p-5 rounded-xl bg-[#111827] border border-slate-800 hover:border-slate-700 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-700/80 text-blue-400 flex items-center justify-center mb-3.5">
+                  <Icon size={18} />
+                </div>
+                <h3 className="font-semibold text-sm text-white mb-1.5">{title}</h3>
+                <p className="text-slate-400 text-xs leading-relaxed">{desc}</p>
               </div>
-              <h3 className="font-semibold text-white mb-1">{title}</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">{desc}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
-
-      {/* ── Footer ── */}
-      <footer className="text-center py-5 text-slate-600 text-xs border-t border-slate-800">
-      </footer>
     </div>
   );
 }

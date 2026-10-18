@@ -90,11 +90,9 @@ const getChecklist = async (req, res) => {
       [tripId]
     );
 
-    // Summary counts for the frontend progress bar
     const totalItems  = rows.length;
     const packedItems = rows.filter((r) => r.is_packed).length;
 
-    // Group by category
     const grouped = rows.reduce((acc, item) => {
       const key = item.category || 'General';
       if (!acc[key]) acc[key] = [];
@@ -103,17 +101,14 @@ const getChecklist = async (req, res) => {
     }, {});
 
     res.json({
-      status: 'success',
+      status:  'success',
+      results: totalItems,
       data: {
-        summary: {
-          total:  totalItems,
-          packed: packedItems,
-          pct:    totalItems > 0
-            ? parseFloat(((packedItems / totalItems) * 100).toFixed(1))
-            : 0,
-        },
+        total:    totalItems,
+        packed:   packedItems,
+        percent:  totalItems > 0 ? Math.round((packedItems / totalItems) * 100) : 0,
+        items:    rows,
         grouped,
-        items: rows,   // flat list also provided for convenience
       },
     });
   } catch (err) {
@@ -142,7 +137,6 @@ const toggleItem = async (req, res) => {
   }
 
   try {
-    // Fetch current state
     const [existing] = await pool.execute(
       'SELECT * FROM packing_checklist WHERE id = ? AND trip_id = ? LIMIT 1',
       [itemId, tripId]
@@ -152,8 +146,9 @@ const toggleItem = async (req, res) => {
       return res.status(404).json({ status: 'fail', message: 'Checklist item not found.' });
     }
 
-    // Flip the bit
-    const newState = existing[0].is_packed ? 0 : 1;
+    const newState = req.body.is_packed !== undefined
+      ? (req.body.is_packed ? 1 : 0)
+      : (existing[0].is_packed ? 0 : 1);
 
     await pool.execute(
       'UPDATE packing_checklist SET is_packed = ? WHERE id = ?',
@@ -173,8 +168,47 @@ const toggleItem = async (req, res) => {
 };
 
 // ──────────────────────────────────────────────────────────────
+// PATCH /api/trips/:tripId/checklist/reset
+// Reset / Uncheck all items for reuse
+// ──────────────────────────────────────────────────────────────
+const resetChecklist = async (req, res) => {
+  const tripId = parseInt(req.params.tripId, 10);
+  if (isNaN(tripId)) {
+    return res.status(400).json({ status: 'fail', message: 'Invalid trip ID.' });
+  }
+
+  const owns = await verifyTripOwner(tripId, req.user.id);
+  if (!owns) {
+    return res.status(403).json({
+      status:  'fail',
+      message: 'Trip not found or you do not have permission.',
+    });
+  }
+
+  try {
+    await pool.execute(
+      'UPDATE packing_checklist SET is_packed = 0 WHERE trip_id = ?',
+      [tripId]
+    );
+
+    const [rows] = await pool.execute(
+      'SELECT * FROM packing_checklist WHERE trip_id = ? ORDER BY category ASC, id ASC',
+      [tripId]
+    );
+
+    res.json({
+      status:  'success',
+      message: 'Checklist reset. All items marked unpacked.',
+      data:    { items: rows },
+    });
+  } catch (err) {
+    console.error('[resetChecklist]', err);
+    res.status(500).json({ status: 'error', message: 'Failed to reset checklist.' });
+  }
+};
+
+// ──────────────────────────────────────────────────────────────
 // DELETE /api/trips/:tripId/checklist/:itemId
-// Remove a single checklist item
 // ──────────────────────────────────────────────────────────────
 const deleteChecklistItem = async (req, res) => {
   const tripId = parseInt(req.params.tripId, 10);
@@ -208,4 +242,10 @@ const deleteChecklistItem = async (req, res) => {
   }
 };
 
-module.exports = { addChecklistItem, getChecklist, toggleItem, deleteChecklistItem };
+module.exports = {
+  addChecklistItem,
+  getChecklist,
+  toggleItem,
+  resetChecklist,
+  deleteChecklistItem,
+};

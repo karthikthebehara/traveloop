@@ -1,13 +1,53 @@
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
+const helmet  = require('helmet');
 const pool    = require('./config/db');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
-// ── Global Middleware ──────────────────────────────────────────
-app.use(cors());
+// Trust reverse proxy (for HTTPS detection behind Load Balancers / Nginx / Cloudflare)
+app.set('trust proxy', 1);
+
+// Automatic HTTP-to-HTTPS redirect middleware in production
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    if (req.headers['x-forwarded-proto'] && req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    next();
+  });
+}
+
+// ── Production Security Headers (Helmet) ────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // Prevents blocking of frontend CDN assets and external map/image providers
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ── Strict Production CORS ─────────────────────────────────────
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://traveloop.com',
+  'https://www.traveloop.com',
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -17,8 +57,8 @@ app.get('/', async (req, res) => {
     const [rows] = await pool.query('SELECT 1 + 1 AS result');
     res.json({
       status:  'ok',
-      message: '🌍 Traveloop API is running',
-      db_test: rows[0].result,  // should be 2
+      message: 'Traveloop API is running',
+      db_test: rows[0].result,
     });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
@@ -26,12 +66,14 @@ app.get('/', async (req, res) => {
 });
 
 // ── API Routes ────────────────────────────────────────────────
-app.use('/api/auth',    require('./routes/authRoutes'));
-app.use('/api/profile', require('./routes/profileRoutes'));
-app.use('/api/admin',   require('./routes/adminRoutes'));
+app.use('/api/auth',               require('./routes/authRoutes'));
+app.use('/api/profile',            require('./routes/profileRoutes'));
+app.use('/api/cities',             require('./routes/cityRoutes'));
+app.use('/api/activities-catalog', require('./routes/catalogRoutes'));
+app.use('/api/admin',              require('./routes/adminRoutes'));
 
-// Budget router first — catches /api/trips/public/:tripId BEFORE
-// tripRoutes can swallow 'public' as a /:id param
+// Budget router first — catches /api/trips/public/:tripId and /expenses BEFORE
+// tripRoutes can swallow 'public' or 'expenses' as a /:id param
 app.use('/api/trips',  require('./routes/budgetRoutes'));
 app.use('/api/trips',  require('./routes/tripRoutes'));
 app.use('/api/trips/:tripId/stops',      require('./routes/stopRoutes'));
@@ -53,29 +95,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ── Auto-migrate: ensure trip_notes table exists ──────────────
-(async () => {
-  try {
-    await pool.execute(`
-      CREATE TABLE IF NOT EXISTS trip_notes (
-        id         INT UNSIGNED   NOT NULL AUTO_INCREMENT,
-        trip_id    INT UNSIGNED   NOT NULL,
-        title      VARCHAR(200)       NULL DEFAULT NULL,
-        content    TEXT           NOT NULL,
-        created_at DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        CONSTRAINT fk_notes_trip FOREIGN KEY (trip_id) REFERENCES trips (id) ON DELETE CASCADE ON UPDATE CASCADE,
-        KEY idx_notes_trip (trip_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    console.log('✅  trip_notes table ready');
-  } catch (err) {
-    console.warn('⚠️  Could not auto-create trip_notes table:', err.message);
-  }
-})();
-
 // ── Start Server ──────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`✅  Traveloop server running on http://localhost:${PORT}`);
+  console.log(`[Traveloop Server] Running on http://localhost:${PORT}`);
 });

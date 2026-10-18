@@ -6,12 +6,20 @@ const {
   getTripById,
   updateTrip,
   deleteTrip,
+  copyTrip,
+  getCommunityTrips,
 } = require('../controllers/tripController');
 
 const router = express.Router();
 
-// All trip routes require a valid JWT
+// Public route: community trips feed (anyone can browse)
+router.get('/community', getCommunityTrips);
+
+// Protected routes require a valid JWT
 router.use(protect);
+
+// POST   /api/trips/copy/:id — copy an itinerary to authenticated user's account
+router.post('/copy/:id', copyTrip);
 
 // POST   /api/trips        — create a new trip
 // GET    /api/trips        — list all trips for logged-in user

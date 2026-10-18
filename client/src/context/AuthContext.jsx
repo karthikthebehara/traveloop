@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import api from '../api/axios'; // Use our pre-configured Axios instance if possible
+import api from '../api/axios';
 
 const AuthContext = createContext();
 
@@ -18,13 +17,11 @@ export const AuthProvider = ({ children }) => {
       
       if (token) {
         try {
-          // Verify token by fetching user profile
           const response = await api.get('/auth/me');
           setUser(response.data.data.user);
           setIsAuthenticated(true);
         } catch (error) {
           console.error("Token verification failed:", error);
-          // Token is invalid or expired
           localStorage.removeItem('traveloop_token');
           localStorage.removeItem('token');
           localStorage.removeItem('traveloop_user');
@@ -52,8 +49,12 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  const updateUser = (userData) => {
+    setUser(prev => (prev ? { ...prev, ...userData } : userData));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

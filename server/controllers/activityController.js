@@ -3,32 +3,53 @@ const pool = require('../config/db');
 
 // ── Joi Schema ─────────────────────────────────────────────────
 const activitySchema = Joi.object({
-  title:         Joi.string().trim().min(1).max(200).required(),
-  description:   Joi.string().max(1000).optional().allow('', null),
-  category:      Joi.string()
-                   .valid('sightseeing','food','transport','accommodation','adventure','shopping','other')
-                   .optional()
-                   .default('other'),
-  cost:          Joi.number().min(0).precision(2).optional().default(0)
-                   .messages({ 'number.min': 'cost must be a positive decimal or zero.' }),
-  start_time:    Joi.date().iso().optional().allow(null),
-  end_time:      Joi.date().iso().min(Joi.ref('start_time')).optional().allow(null)
-                   .messages({ 'date.min': 'end_time must not be before start_time.' }),
-  location_name: Joi.string().max(200).optional().allow('', null),
-  booking_ref:   Joi.string().max(100).optional().allow('', null),
-  is_booked:     Joi.boolean().optional().default(false),
+  activity_id:    Joi.number().integer().positive().optional().allow(null),
+  title:          Joi.string().trim().min(1).max(200).required(),
+  description:    Joi.string().max(1000).optional().allow('', null),
+  category:       Joi.string()
+                    .valid('sightseeing','food','transport','accommodation','adventure','shopping','other')
+                    .optional()
+                    .default('other'),
+  cost:           Joi.number().min(0).precision(2).optional().default(0),
+  scheduled_date: Joi.date().iso().optional().allow(null),
+  duration_hours: Joi.number().min(0).max(48).precision(1).optional().default(1.0),
+  start_time:     Joi.date().iso().optional().allow(null),
+  end_time:       Joi.date().iso().min(Joi.ref('start_time')).optional().allow(null)
+                    .messages({ 'date.min': 'end_time must not be before start_time.' }),
+  location_name:  Joi.string().max(200).optional().allow('', null),
+  booking_ref:    Joi.string().max(100).optional().allow('', null),
+  is_booked:      Joi.boolean().optional().default(false),
 });
 
 // ── Helper: verify stop belongs to a trip owned by the user ───
 const verifyStopOwner = async (stopId, userId) => {
   const [rows] = await pool.execute(
-    `SELECT s.id FROM stops s
+    `SELECT s.id, s.arrival_date, s.departure_date, t.id AS trip_id, t.sharing_status, t.user_id, t.start_date, t.end_date
+     FROM stops s
      INNER JOIN trips t ON t.id = s.trip_id
-     WHERE s.id = ? AND t.user_id = ?
-     LIMIT 1`,
-    [stopId, userId]
+     WHERE s.id = ? LIMIT 1`,
+    [stopId]
   );
-  return rows.length > 0;
+  if (!rows.length) return null;
+  return rows[0];
+};
+
+const validateActivityDate = (stop, scheduled_date) => {
+  if (!scheduled_date) return null;
+  const actDateStr = new Date(scheduled_date).toISOString().split('T')[0];
+
+  const minDate = stop.arrival_date ? new Date(stop.arrival_date).toISOString().split('T')[0]
+                : (stop.start_date ? new Date(stop.start_date).toISOString().split('T')[0] : null);
+  const maxDate = stop.departure_date ? new Date(stop.departure_date).toISOString().split('T')[0]
+                : (stop.end_date ? new Date(stop.end_date).toISOString().split('T')[0] : null);
+
+  if (minDate && actDateStr < minDate) {
+    return `Activity scheduled date (${actDateStr}) cannot be earlier than ${stop.arrival_date ? 'stop arrival date' : 'trip start date'} (${minDate}).`;
+  }
+  if (maxDate && actDateStr > maxDate) {
+    return `Activity scheduled date (${actDateStr}) cannot be after ${stop.departure_date ? 'stop departure date' : 'trip end date'} (${maxDate}).`;
+  }
+  return null;
 };
 
 // ──────────────────────────────────────────────────────────────
@@ -41,16 +62,29 @@ const addActivity = async (req, res) => {
     return res.status(400).json({ status: 'fail', message: 'Invalid stop ID.' });
   }
 
-  // Ownership check — walks stop → trip → user
-  const owns = await verifyStopOwner(stopId, req.user.id);
-  if (!owns) {
+  const stop = await verifyStopOwner(stopId, req.user.id);
+  if (!stop || stop.user_id !== req.user.id) {
     return res.status(403).json({
       status:  'fail',
       message: 'Stop not found or you do not have permission.',
     });
   }
 
-  const { error, value } = activitySchema.validate(req.body, { abortEarly: false });
+  // Pre-fill from catalog if activity_id is provided and title is missing
+  let body = { ...req.body };
+  if (body.activity_id && !body.title) {
+    const [catRows] = await pool.execute('SELECT * FROM activities_catalog WHERE id = ? LIMIT 1', [body.activity_id]);
+    if (catRows.length) {
+      const cat = catRows[0];
+      body.title = cat.name;
+      body.description = body.description || cat.description;
+      body.category = body.category || cat.category;
+      body.cost = body.cost !== undefined ? body.cost : parseFloat(cat.estimated_cost);
+      body.duration_hours = body.duration_hours || parseFloat(cat.duration_hours);
+    }
+  }
+
+  const { error, value } = activitySchema.validate(body, { abortEarly: false });
   if (error) {
     return res.status(422).json({
       status: 'fail',
@@ -59,18 +93,26 @@ const addActivity = async (req, res) => {
   }
 
   const {
-    title, description, category, cost,
+    activity_id, title, description, category, cost,
+    scheduled_date, duration_hours,
     start_time, end_time, location_name, booking_ref, is_booked,
   } = value;
+
+  // Strict date boundary validation
+  const dateErr = validateActivityDate(stop, scheduled_date);
+  if (dateErr) {
+    return res.status(400).json({ status: 'fail', message: dateErr });
+  }
 
   try {
     const [result] = await pool.execute(
       `INSERT INTO activities
-         (stop_id, title, description, category, cost,
-          start_time, end_time, location_name, booking_ref, is_booked)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (stop_id, activity_id, title, description, category, cost,
+          scheduled_date, duration_hours, start_time, end_time, location_name, booking_ref, is_booked)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        stopId, title, description ?? null, category, cost,
+        stopId, activity_id ?? null, title, description ?? null, category, cost,
+        scheduled_date ?? null, duration_hours ?? 1.0,
         start_time ?? null, end_time ?? null,
         location_name ?? null, booking_ref ?? null,
         is_booked ? 1 : 0,
@@ -91,7 +133,7 @@ const addActivity = async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // GET /api/stops/:stopId/activities
-// List all activities for a stop, ordered by start_time
+// List all activities for a stop
 // ──────────────────────────────────────────────────────────────
 const getActivities = async (req, res) => {
   const stopId = parseInt(req.params.stopId, 10);
@@ -99,19 +141,22 @@ const getActivities = async (req, res) => {
     return res.status(400).json({ status: 'fail', message: 'Invalid stop ID.' });
   }
 
-  const owns = await verifyStopOwner(stopId, req.user.id);
-  if (!owns) {
-    return res.status(403).json({
-      status:  'fail',
-      message: 'Stop not found or you do not have permission.',
-    });
+  const stop = await verifyStopOwner(stopId, req.user ? req.user.id : 0);
+  if (!stop) {
+    return res.status(404).json({ status: 'fail', message: 'Stop not found.' });
+  }
+
+  const isOwner = req.user && stop.user_id === req.user.id;
+  const isPublic = stop.sharing_status === 'public';
+  if (!isOwner && !isPublic) {
+    return res.status(403).json({ status: 'fail', message: 'Access denied.' });
   }
 
   try {
     const [rows] = await pool.execute(
       `SELECT * FROM activities
        WHERE stop_id = ?
-       ORDER BY start_time ASC, id ASC`,
+       ORDER BY scheduled_date ASC, start_time ASC, id ASC`,
       [stopId]
     );
 
@@ -128,21 +173,18 @@ const getActivities = async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // PUT /api/stops/:stopId/activities/:activityId
-// Update an activity
 // ──────────────────────────────────────────────────────────────
 const updateActivity = async (req, res) => {
   const stopId     = parseInt(req.params.stopId, 10);
   const activityId = parseInt(req.params.activityId, 10);
+
   if (isNaN(stopId) || isNaN(activityId)) {
     return res.status(400).json({ status: 'fail', message: 'Invalid ID.' });
   }
 
-  const owns = await verifyStopOwner(stopId, req.user.id);
-  if (!owns) {
-    return res.status(403).json({
-      status:  'fail',
-      message: 'Stop not found or you do not have permission.',
-    });
+  const stop = await verifyStopOwner(stopId, req.user.id);
+  if (!stop || stop.user_id !== req.user.id) {
+    return res.status(403).json({ status: 'fail', message: 'Access denied.' });
   }
 
   const { error, value } = activitySchema.validate(req.body, { abortEarly: false });
@@ -154,29 +196,33 @@ const updateActivity = async (req, res) => {
   }
 
   const {
-    title, description, category, cost,
+    activity_id, title, description, category, cost,
+    scheduled_date, duration_hours,
     start_time, end_time, location_name, booking_ref, is_booked,
   } = value;
 
+  // Strict date boundary validation
+  const dateErr = validateActivityDate(stop, scheduled_date);
+  if (dateErr) {
+    return res.status(400).json({ status: 'fail', message: dateErr });
+  }
+
   try {
-    const [result] = await pool.execute(
+    await pool.execute(
       `UPDATE activities
-       SET title = ?, description = ?, category = ?, cost = ?,
-           start_time = ?, end_time = ?, location_name = ?,
-           booking_ref = ?, is_booked = ?
+       SET activity_id = ?, title = ?, description = ?, category = ?, cost = ?,
+           scheduled_date = ?, duration_hours = ?, start_time = ?, end_time = ?,
+           location_name = ?, booking_ref = ?, is_booked = ?
        WHERE id = ? AND stop_id = ?`,
       [
-        title, description ?? null, category, cost,
+        activity_id ?? null, title, description ?? null, category, cost,
+        scheduled_date ?? null, duration_hours ?? 1.0,
         start_time ?? null, end_time ?? null,
         location_name ?? null, booking_ref ?? null,
         is_booked ? 1 : 0,
         activityId, stopId,
       ]
     );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ status: 'fail', message: 'Activity not found.' });
-    }
 
     const [rows] = await pool.execute(
       'SELECT * FROM activities WHERE id = ? LIMIT 1',
@@ -192,21 +238,18 @@ const updateActivity = async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // DELETE /api/stops/:stopId/activities/:activityId
-// Remove a single activity
 // ──────────────────────────────────────────────────────────────
 const deleteActivity = async (req, res) => {
   const stopId     = parseInt(req.params.stopId, 10);
   const activityId = parseInt(req.params.activityId, 10);
+
   if (isNaN(stopId) || isNaN(activityId)) {
     return res.status(400).json({ status: 'fail', message: 'Invalid ID.' });
   }
 
-  const owns = await verifyStopOwner(stopId, req.user.id);
-  if (!owns) {
-    return res.status(403).json({
-      status:  'fail',
-      message: 'Stop not found or you do not have permission.',
-    });
+  const stop = await verifyStopOwner(stopId, req.user.id);
+  if (!stop || stop.user_id !== req.user.id) {
+    return res.status(403).json({ status: 'fail', message: 'Access denied.' });
   }
 
   try {

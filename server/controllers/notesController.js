@@ -3,9 +3,11 @@ const pool = require('../config/db');
 
 // ── Joi Schema ─────────────────────────────────────────────────
 const noteSchema = Joi.object({
-  title:   Joi.string().trim().max(200).optional().allow('', null),
-  content: Joi.string().trim().min(1).max(5000).required()
-              .messages({ 'string.empty': 'Note content must not be empty.' }),
+  trip_stop_id: Joi.number().integer().positive().optional().allow(null),
+  note_date:    Joi.date().iso().optional().allow(null),
+  title:        Joi.string().trim().max(200).optional().allow('', null),
+  content:      Joi.string().trim().min(1).max(5000).required()
+                  .messages({ 'string.empty': 'Note content must not be empty.' }),
 });
 
 // ── Helper: verify trip ownership ─────────────────────────────
@@ -19,7 +21,7 @@ const verifyTripOwner = async (tripId, userId) => {
 
 // ──────────────────────────────────────────────────────────────
 // GET /api/trips/:tripId/notes
-// List all notes for a trip, newest first
+// List all notes for a trip, sorted by note_date/created_at
 // ──────────────────────────────────────────────────────────────
 const getNotes = async (req, res) => {
   const tripId = parseInt(req.params.tripId, 10);
@@ -37,7 +39,11 @@ const getNotes = async (req, res) => {
 
   try {
     const [rows] = await pool.execute(
-      'SELECT * FROM trip_notes WHERE trip_id = ? ORDER BY created_at DESC',
+      `SELECT tn.*, s.city_name
+       FROM trip_notes tn
+       LEFT JOIN stops s ON s.id = tn.trip_stop_id
+       WHERE tn.trip_id = ?
+       ORDER BY COALESCE(tn.note_date, DATE(tn.created_at)) DESC, tn.created_at DESC`,
       [tripId]
     );
     res.json({ status: 'success', results: rows.length, data: { notes: rows } });
@@ -73,14 +79,20 @@ const createNote = async (req, res) => {
     });
   }
 
+  const { trip_stop_id, note_date, title, content } = value;
+
   try {
     const [result] = await pool.execute(
-      'INSERT INTO trip_notes (trip_id, title, content) VALUES (?, ?, ?)',
-      [tripId, value.title ?? null, value.content]
+      `INSERT INTO trip_notes (trip_id, trip_stop_id, note_date, title, content)
+       VALUES (?, ?, ?, ?, ?)`,
+      [tripId, trip_stop_id ?? null, note_date ?? null, title ?? null, content]
     );
 
     const [rows] = await pool.execute(
-      'SELECT * FROM trip_notes WHERE id = ? LIMIT 1',
+      `SELECT tn.*, s.city_name
+       FROM trip_notes tn
+       LEFT JOIN stops s ON s.id = tn.trip_stop_id
+       WHERE tn.id = ? LIMIT 1`,
       [result.insertId]
     );
 
@@ -98,6 +110,7 @@ const createNote = async (req, res) => {
 const updateNote = async (req, res) => {
   const tripId = parseInt(req.params.tripId, 10);
   const noteId = parseInt(req.params.noteId, 10);
+
   if (isNaN(tripId) || isNaN(noteId)) {
     return res.status(400).json({ status: 'fail', message: 'Invalid ID.' });
   }
@@ -118,18 +131,30 @@ const updateNote = async (req, res) => {
     });
   }
 
+  const { trip_stop_id, note_date, title, content } = value;
+
   try {
-    const [result] = await pool.execute(
-      'UPDATE trip_notes SET title = ?, content = ? WHERE id = ? AND trip_id = ?',
-      [value.title ?? null, value.content, noteId, tripId]
+    const [existing] = await pool.execute(
+      'SELECT id FROM trip_notes WHERE id = ? AND trip_id = ? LIMIT 1',
+      [noteId, tripId]
     );
 
-    if (result.affectedRows === 0) {
+    if (!existing.length) {
       return res.status(404).json({ status: 'fail', message: 'Note not found.' });
     }
 
+    await pool.execute(
+      `UPDATE trip_notes
+       SET trip_stop_id = ?, note_date = ?, title = ?, content = ?
+       WHERE id = ? AND trip_id = ?`,
+      [trip_stop_id ?? null, note_date ?? null, title ?? null, content, noteId, tripId]
+    );
+
     const [rows] = await pool.execute(
-      'SELECT * FROM trip_notes WHERE id = ? LIMIT 1',
+      `SELECT tn.*, s.city_name
+       FROM trip_notes tn
+       LEFT JOIN stops s ON s.id = tn.trip_stop_id
+       WHERE tn.id = ? LIMIT 1`,
       [noteId]
     );
 
@@ -142,11 +167,11 @@ const updateNote = async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // DELETE /api/trips/:tripId/notes/:noteId
-// Delete a note
 // ──────────────────────────────────────────────────────────────
 const deleteNote = async (req, res) => {
   const tripId = parseInt(req.params.tripId, 10);
   const noteId = parseInt(req.params.noteId, 10);
+
   if (isNaN(tripId) || isNaN(noteId)) {
     return res.status(400).json({ status: 'fail', message: 'Invalid ID.' });
   }

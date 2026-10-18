@@ -1,21 +1,28 @@
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware');
-const { getBudgetSummary, toggleSharing, getPublicTrip } = require('../controllers/budgetController');
+const {
+  getBudgetSummary,
+  getExpenses,
+  addExpense,
+  deleteExpense,
+  toggleSharing,
+  getPublicTrip,
+  shareTripEmail,
+} = require('../controllers/budgetController');
 
-const router = express.Router({ mergeParams: true });
+const router = express.Router();
 
-// ── Public route — NO protect middleware ───────────────────────
-// GET /api/trips/public/:tripId
-// Must be mounted BEFORE the protected routes in index.js to prevent
-// Express matching 'public' as a :tripId param on the trips router.
-// This is handled by mounting this router at /api/trips in index.js.
+// Public route — no protect middleware
 router.get('/public/:tripId', getPublicTrip);
 
-// ── Protected routes ───────────────────────────────────────────
-// GET   /api/trips/:tripId/budget  — budget vs. spend summary
+// Protected routes below
 router.get('/:tripId/budget', protect, getBudgetSummary);
-
-// PATCH /api/trips/:tripId/share   — toggle public/private
 router.patch('/:tripId/share', protect, toggleSharing);
+router.post('/:tripId/share-email', protect, shareTripEmail);
+
+// Expenses CRUD
+router.get('/:tripId/expenses', protect, getExpenses);
+router.post('/:tripId/expenses', protect, addExpense);
+router.delete('/:tripId/expenses/:expId', protect, deleteExpense);
 
 module.exports = router;
