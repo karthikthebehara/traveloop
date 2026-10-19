@@ -33,7 +33,7 @@ const forgotPasswordSchema = Joi.object({
 const signToken = (userId, role = 'user') =>
   jwt.sign(
     { id: userId, role },
-    process.env.JWT_SECRET,
+    process.env.JWT_SECRET || 'traveloop_production_fallback_jwt_secret_key_2026',
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 
@@ -124,7 +124,11 @@ const register = async (req, res) => {
     });
   } catch (err) {
     console.error('[register]', err);
-    res.status(500).json({ status: 'error', message: 'Server error during registration.' });
+    res.status(500).json({
+      status: 'error',
+      message: err.sqlMessage || err.message || 'Server error during registration.',
+      details: err.message,
+    });
   }
 };
 
@@ -167,7 +171,11 @@ const login = async (req, res) => {
     });
   } catch (err) {
     console.error('[login]', err);
-    res.status(500).json({ status: 'error', message: 'Server error during login.' });
+    res.status(500).json({
+      status: 'error',
+      message: err.sqlMessage || err.message || 'Server error during login.',
+      details: err.message,
+    });
   }
 };
 

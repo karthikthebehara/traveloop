@@ -166,8 +166,16 @@ function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
+      console.error('[Login error]:', err);
       const data = err.response?.data;
-      setError(data?.message || data?.errors?.[0] || 'Invalid credentials or server not reachable.');
+      const serverMsg = data?.message || data?.error || (Array.isArray(data?.errors) ? data.errors[0] : null);
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (!err.response) {
+        setError(`Cannot reach backend server (${err.message}). Check live status at /api/health.`);
+      } else {
+        setError(`Login failed (${err.response.status}): ${err.message || 'Invalid credentials'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -456,10 +464,16 @@ function Signup() {
         navigate('/dashboard');
       }
     } catch (err) {
+      console.error('[Signup error]:', err);
       const data = err.response?.data;
-      if (data?.message) setError(data.message);
-      else if (data?.errors?.length) setError(data.errors[0]);
-      else setError('Registration failed or server not reachable.');
+      const serverMsg = data?.message || data?.error || (Array.isArray(data?.errors) ? data.errors[0] : null);
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (!err.response) {
+        setError(`Cannot reach backend server (${err.message}). Check live status at /api/health.`);
+      } else {
+        setError(`Registration failed (${err.response.status}): ${err.message || 'Server error'}`);
+      }
     } finally {
       setLoading(false);
     }
