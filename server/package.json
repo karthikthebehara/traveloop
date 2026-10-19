@@ -4,10 +4,12 @@
   "description": "Traveloop REST API — Odoo KAHE Hackathon",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node init_prod_db.js && node index.js",
     "dev": "nodemon index.js",
     "backup": "node backup_db.js",
-    "clean": "node clean_for_launch.js"
+    "clean": "node clean_for_launch.js",
+    "migrate": "node migrate.js",
+    "migrate-and-clean": "node migrate.js && node clean_for_launch.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
